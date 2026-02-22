@@ -1764,7 +1764,7 @@ function Write(props: ToolProps<typeof WriteTool>) {
 
   const diagnostics = createMemo(() => {
     const filePath = Filesystem.normalizePath(props.input.filePath ?? "")
-    return props.metadata.diagnostics?.[filePath] ?? []
+    return filterErrors(props.metadata.diagnostics?.[filePath])
   })
 
   return (
@@ -1780,15 +1780,7 @@ function Write(props: ToolProps<typeof WriteTool>) {
               content={code()}
             />
           </line_number>
-          <Show when={diagnostics().length}>
-            <For each={diagnostics()}>
-              {(diagnostic) => (
-                <text fg={theme.error}>
-                  Error [{diagnostic.range.start.line}:{diagnostic.range.start.character}]: {diagnostic.message}
-                </text>
-              )}
-            </For>
-          </Show>
+          <Diagnostics diagnostics={diagnostics()} theme={theme} />
         </BlockTool>
       </Match>
       <Match when={true}>
@@ -1974,8 +1966,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
 
   const diagnostics = createMemo(() => {
     const filePath = Filesystem.normalizePath(props.input.filePath ?? "")
-    const arr = props.metadata.diagnostics?.[filePath] ?? []
-    return arr.filter((x) => x.severity === 1).slice(0, 3)
+    return filterErrors(props.metadata.diagnostics?.[filePath])
   })
 
   return (
@@ -2003,18 +1994,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
               removedLineNumberBg={theme.diffRemovedLineNumberBg}
             />
           </box>
-          <Show when={diagnostics().length}>
-            <box>
-              <For each={diagnostics()}>
-                {(diagnostic) => (
-                  <text fg={theme.error}>
-                    Error [{diagnostic.range.start.line + 1}:{diagnostic.range.start.character + 1}]{" "}
-                    {diagnostic.message}
-                  </text>
-                )}
-              </For>
-            </box>
-          </Show>
+          <Diagnostics diagnostics={diagnostics()} theme={theme} />
         </BlockTool>
       </Match>
       <Match when={true}>
@@ -2075,20 +2055,27 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
     <Switch>
       <Match when={files().length > 0}>
         <For each={files()}>
-          {(file) => (
-            <BlockTool title={title(file)} part={props.part}>
-              <Show
-                when={file.type !== "delete"}
-                fallback={
-                  <text fg={theme.diffRemoved}>
-                    -{file.deletions} line{file.deletions !== 1 ? "s" : ""}
-                  </text>
-                }
-              >
-                <Diff diff={file.diff} filePath={file.filePath} />
-              </Show>
-            </BlockTool>
-          )}
+          {(file) => {
+            const diagnostics = createMemo(() => {
+              const normalized = Filesystem.normalizePath(file.movePath ?? file.filePath)
+              return filterErrors(props.metadata.diagnostics?.[normalized])
+            })
+            return (
+              <BlockTool title={title(file)} part={props.part}>
+                <Show
+                  when={file.type !== "delete"}
+                  fallback={
+                    <text fg={theme.diffRemoved}>
+                      -{file.deletions} line{file.deletions !== 1 ? "s" : ""}
+                    </text>
+                  }
+                >
+                  <Diff diff={file.diff} filePath={file.filePath} />
+                  <Diagnostics diagnostics={diagnostics()} theme={theme} />
+                </Show>
+              </BlockTool>
+            )
+          }}
         </For>
       </Match>
       <Match when={true}>
@@ -2161,6 +2148,27 @@ function Skill(props: ToolProps<typeof SkillTool>) {
       Skill "{props.input.name}"
     </InlineTool>
   )
+}
+
+function Diagnostics(props: { diagnostics: Record<string, any>[]; theme: { error: any } }) {
+  return (
+    <Show when={props.diagnostics.length}>
+      <box>
+        <For each={props.diagnostics}>
+          {(diagnostic) => (
+            <text fg={props.theme.error}>
+              Error [{diagnostic.range.start.line + 1}:{diagnostic.range.start.character + 1}] {diagnostic.message}
+            </text>
+          )}
+        </For>
+      </box>
+    </Show>
+  )
+}
+
+function filterErrors(diagnostics?: Record<string, any>[]): Record<string, any>[] {
+  if (!diagnostics) return []
+  return diagnostics.filter((x) => x.severity === 1).slice(0, 3)
 }
 
 function normalizePath(input?: string) {
