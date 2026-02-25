@@ -18,6 +18,9 @@ import { Script } from "@opencode-ai/script"
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
+// --targets=linux,windows,darwin  仅构建指定 OS 的标准变体（排除 musl 和 baseline）
+const targetsArg = process.argv.find((arg) => arg.startsWith("--targets="))
+const targetOSFilter = targetsArg ? targetsArg.slice("--targets=".length).split(",") : null
 
 const allTargets: {
   os: string
@@ -91,6 +94,13 @@ const targets = singleFlag
       }
 
       return true
+    })
+  : targetOSFilter
+  ? allTargets.filter((item) => {
+      const os = item.os === "win32" ? "windows" : item.os
+      // 排除 musl 和 baseline 变体，仅保留标准 glibc 版本
+      if (item.abi === "musl" || item.avx2 === false) return false
+      return targetOSFilter.includes(os)
     })
   : allTargets
 
